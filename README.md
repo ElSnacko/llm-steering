@@ -24,8 +24,8 @@ Get started in 5 steps:
 
 ```bash
 # Clone repository
-git clone --recurse-submodules https://github.com/ElSnacko/llm-activation-steering.git
-cd activation-steering
+git clone --recurse-submodules https://github.com/ElSnacko/llm-steering
+cd llm-steering
 
 # If already cloned without submodules, initialize them
 git submodule update --init --recursive
