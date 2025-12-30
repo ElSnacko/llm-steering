@@ -1,0 +1,3 @@
+[submodule "LLM-Refusal-Evaluation"]
+	path = LLM-Refusal-Evaluation
+	url = https://github.com/CompactifAI/LLM-Refusal-Evaluation.git
