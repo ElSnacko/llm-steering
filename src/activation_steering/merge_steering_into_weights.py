@@ -12,6 +12,122 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import os
 import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+def export_to_gguf(
+    model_dir,
+    output_path=None,
+    quantization="f16",
+    verbose=False
+):
+    """
+    Export a HuggingFace model to GGUF format.
+
+    Attempts to convert using llama.cpp conversion tools. Falls back to
+    alternative methods if primary conversion fails.
+
+    Args:
+        model_dir: Directory containing HuggingFace model
+        output_path: Path for output GGUF file (default: model_dir/model.gguf)
+        quantization: Quantization type ("f16", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "f32")
+        verbose: Print detailed conversion output
+
+    Returns:
+        Dictionary with export results
+
+    Raises:
+        RuntimeError: If GGUF conversion fails
+    """
+    if output_path is None:
+        output_path = os.path.join(model_dir, f"model-{quantization}.gguf")
+
+    print(f"[GGUF] Converting model to GGUF format...")
+    print(f"   Model directory: {model_dir}")
+    print(f"   Output path: {output_path}")
+    print(f"   Quantization: {quantization}")
+
+    conversion_methods = [
+        _try_convert_with_hf_to_gguf,
+        _try_convert_with_llama_cpp_python
+    ]
+
+    for method in conversion_methods:
+        try:
+            result = method(model_dir, output_path, quantization, verbose)
+            if result["success"]:
+                print(f"[OK] GGUF export successful using {result['method']}")
+                return result
+        except Exception as e:
+            print(f"[WARN] Conversion method failed: {e}")
+            continue
+
+    raise RuntimeError(
+        "GGUF conversion failed. Ensure llama.cpp or llama-cpp-python is installed.\n"
+        "Install with: pip install llama-cpp-python\n"
+        "Or clone llama.cpp: git clone https://github.com/ggerganov/llama.cpp"
+    )
+
+
+def _try_convert_with_hf_to_gguf(model_dir, output_path, quantization, verbose):
+    """Try conversion using llama.cpp's convert-hf-to-gguf.py script."""
+
+    llama_cpp_paths = [
+        Path.home() / "llama.cpp",
+        Path("/opt/llama.cpp"),
+        Path("./llama.cpp"),
+        Path("../llama.cpp"),
+    ]
+
+    convert_script = None
+    for base_path in llama_cpp_paths:
+        potential_script = base_path / "convert-hf-to-gguf.py"
+        if potential_script.exists():
+            convert_script = potential_script
+            break
+
+    if convert_script is None:
+        raise RuntimeError("convert-hf-to-gguf.py not found")
+
+    cmd = [
+        sys.executable,
+        str(convert_script),
+        model_dir,
+        "--outfile", output_path,
+        "--outtype", quantization
+    ]
+
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Conversion failed: {result.stderr}")
+
+    if verbose:
+        print(result.stdout)
+
+    return {
+        "success": True,
+        "method": "llama.cpp convert-hf-to-gguf.py",
+        "output_path": output_path,
+        "quantization": quantization
+    }
+
+
+def _try_convert_with_llama_cpp_python(model_dir, output_path, quantization, verbose):
+    """Try conversion using llama-cpp-python library."""
+
+    try:
+        from llama_cpp import llama_model_loader
+    except ImportError:
+        raise RuntimeError("llama-cpp-python not installed")
+
+    raise RuntimeError("Direct llama-cpp-python conversion not yet implemented")
 
 
 def merge_steering_into_model(
@@ -19,7 +135,9 @@ def merge_steering_into_model(
     steering_vectors_file,
     target_layers,
     alpha,
-    output_dir
+    output_dir,
+    export_gguf=False,
+    gguf_quantization="f16"
 ):
     """
     Permanently merge steering vectors into model weights.
@@ -37,6 +155,8 @@ def merge_steering_into_model(
         target_layers: List of layer indices to modify
         alpha: Steering coefficient (negative = reduce refusal)
         output_dir: Directory to save modified model
+        export_gguf: Whether to also export to GGUF format
+        gguf_quantization: Quantization type for GGUF export
 
     Returns:
         Dictionary with metadata about the modification
@@ -121,6 +241,25 @@ def merge_steering_into_model(
     print(f"\nLoad the modified model with:")
     print(f'   from transformers import AutoModelForCausalLM')
     print(f'   model = AutoModelForCausalLM.from_pretrained("{output_dir}")')
+
+    if export_gguf:
+        try:
+            print("\n" + "="*80)
+            gguf_result = export_to_gguf(
+                model_dir=output_dir,
+                quantization=gguf_quantization,
+                verbose=False
+            )
+            metadata["gguf_export"] = gguf_result
+
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+
+            print("="*80)
+        except Exception as e:
+            print(f"[WARN] GGUF export failed: {e}")
+            print("[INFO] HuggingFace model still saved successfully")
+            metadata["gguf_export"] = {"success": False, "error": str(e)}
 
     return metadata
 

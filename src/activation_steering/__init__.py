@@ -46,7 +46,8 @@ from .utils import (
 
 from .merge_steering_into_weights import (
     merge_steering_into_model,
-    verify_merged_model
+    verify_merged_model,
+    export_to_gguf
 )
 
 __all__ = [
@@ -79,6 +80,7 @@ __all__ = [
     # Merge functions
     "merge_steering_into_model",
     "verify_merged_model",
+    "export_to_gguf",
 
     # Utility functions
     "ensure_dir",

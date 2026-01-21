@@ -19,7 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from activation_steering import (
     merge_steering_into_model,
     verify_merged_model,
-    load_best_layers_from_correlations
+    load_best_layers_from_correlations,
+    export_to_gguf
 )
 
 
@@ -52,6 +53,16 @@ Examples:
       --merged-model Qwen2.5-7B-Steered \\
       --original-model Qwen/Qwen2.5-7B-Instruct \\
       --layers 10 11 12
+
+  # Merge and export to GGUF
+  python scripts/merge_steering.py \\
+      --model Qwen/Qwen2.5-7B-Instruct \\
+      --steering-vectors steering_vectors_wrmd.pt \\
+      --layers 10 11 12 \\
+      --alpha -2.0 \\
+      --output-dir Qwen2.5-7B-Steered \\
+      --export-gguf \\
+      --gguf-quantization q4_0
         """
     )
 
@@ -84,6 +95,13 @@ Examples:
     # Output
     parser.add_argument("--output-dir", "--output",
                        help="Directory to save merged model")
+
+    # GGUF export options
+    parser.add_argument("--export-gguf", action="store_true",
+                       help="Also export model to GGUF format (requires llama.cpp)")
+    parser.add_argument("--gguf-quantization", default="f16",
+                       choices=["f32", "f16", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0"],
+                       help="GGUF quantization type (default: f16)")
 
     args = parser.parse_args()
 
@@ -167,7 +185,9 @@ Examples:
                 steering_vectors_file=args.steering_vectors,
                 target_layers=target_layers,
                 alpha=args.alpha,
-                output_dir=args.output_dir
+                output_dir=args.output_dir,
+                export_gguf=args.export_gguf,
+                gguf_quantization=args.gguf_quantization
             )
 
             print("\n" + "="*80)

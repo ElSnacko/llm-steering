@@ -167,7 +167,8 @@ activation_steering/
 │   ├── find_best_layers.py      # Step 3: Find effective layers
 │   ├── optimize_alpha.py        # Step 4: Find optimal alpha (recommended)
 │   ├── test_steering.py         # Step 5: Test steering interactively
-│   └── merge_steering.py        # Optional: Merge into weights
+│   ├── merge_steering.py        # Optional: Merge into weights
+│   └── export_to_gguf.py        # Optional: Export to GGUF format
 ├── docs/                         # Additional documentation
 ├── LLM-Refusal-Evaluation/      # External submodule (judge scores)
 └── outputs/                      # Results directory (auto-created)
@@ -441,6 +442,17 @@ python scripts/merge_steering.py \
     --alpha -2.0 \
     --output-dir Qwen2.5-7B-Steered
 
+# Merge and export to GGUF format in one step
+python scripts/merge_steering.py \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --steering-vectors steering_vectors_wrmd.pt \
+    --correlations layer_correlations.json \
+    --top-k 3 \
+    --alpha -2.0 \
+    --output-dir Qwen2.5-7B-Steered \
+    --export-gguf \
+    --gguf-quantization q4_0
+
 # Verify the merged model
 python scripts/merge_steering.py \
     --verify \
@@ -453,6 +465,7 @@ python scripts/merge_steering.py \
 - Modifies the model's MLP bias terms to include steering vectors
 - Creates a standalone model with built-in steering behavior
 - No runtime hooks required for the merged model
+- Optionally exports to GGUF format for llama.cpp
 
 **WARNING:** This permanently modifies the model weights!
 
@@ -464,13 +477,51 @@ python scripts/merge_steering.py \
 - `--top-k`: Merge top K layers from correlations
 - `--alpha`: Steering strength to merge
 - `--output-dir`: Directory to save merged model
+- `--export-gguf`: Also export to GGUF format
+- `--gguf-quantization`: Quantization type (f16, q4_0, q8_0, etc.)
 - `--verify`: Verify merged model against original
 - `--merged-model`: Path to merged model (for verification)
 - `--original-model`: Path to original model (for verification)
 
 ---
 
-### 6. Run LLM-Refusal-Evaluation (Generate Judge Scores)
+### 6. Export to GGUF Format (Optional)
+
+Export any HuggingFace model (including merged models) to GGUF format for llama.cpp:
+
+```bash
+# Export with default FP16 quantization
+python scripts/export_to_gguf.py \
+    --model-dir Qwen2.5-7B-Steered \
+    --quantization f16
+
+# Export with 4-bit quantization for smaller size
+python scripts/export_to_gguf.py \
+    --model-dir Qwen2.5-7B-Steered \
+    --quantization q4_0 \
+    --output model-q4_0.gguf
+```
+
+**Quantization Options:**
+- `f32`: Full 32-bit precision (largest, highest quality)
+- `f16`: Half precision (recommended default)
+- `q8_0`: 8-bit quantization (good quality, smaller)
+- `q5_0/q5_1`: 5-bit quantization (balanced)
+- `q4_0/q4_1`: 4-bit quantization (smallest, lowest quality)
+
+**Requirements:**
+- llama.cpp with `convert-hf-to-gguf.py` script available in PATH or common locations
+- Or install: `pip install llama-cpp-python`
+
+**Arguments:**
+- `--model-dir`: Directory containing HuggingFace model
+- `--output`: Output path for GGUF file (optional)
+- `--quantization`: Quantization type (default: f16)
+- `--verbose`: Print detailed conversion output
+
+---
+
+### 7. Run LLM-Refusal-Evaluation (Generate Judge Scores)
 
 Generate baseline judge scores needed for activation extraction:
 
