@@ -113,7 +113,7 @@ def run_pipeline(
     print("="*80)
     print(f"Model: {model_name}")
     print(f"Results directory: {results_dir}")
-    print(f"Output directory: {output_dirs['extract_activations'].rsplit('/', 2)[0]}")
+    print(f"Output directory: {str(output_dirs['extract_activations']).rsplit('/', 2)[0]}")
     print("="*80)
 
     results = {}
@@ -153,10 +153,17 @@ def run_pipeline(
         print(f"\n[OK] Activations saved to: {activation_path}")
 
     else:
-        # Look for existing activation file
-        activation_path = os.path.join(output_dirs['extract_activations'], 'activations.pt')
-        if not os.path.exists(activation_path):
-            raise FileNotFoundError(f"Activation file not found: {activation_path}")
+        # Look for existing activation file (try multiple patterns)
+        activation_dir = output_dirs['extract_activations']
+        activation_path = None
+        for pattern in ['activations.pt', 'activations_*.pt']:
+            import glob
+            matches = glob.glob(os.path.join(str(activation_dir), pattern))
+            if matches:
+                activation_path = matches[0]
+                break
+        if activation_path is None or not os.path.exists(activation_path):
+            raise FileNotFoundError(f"No activation files found in: {activation_dir}")
         results['activations'] = activation_path
         print(f"\n[INFO] Using existing activations: {activation_path}")
 
@@ -192,10 +199,17 @@ def run_pipeline(
         print(f"\n[OK] Steering vectors saved to: {vector_path}")
 
     else:
-        # Look for existing steering vector file
-        vector_path = os.path.join(output_dirs['compute_wrmd'], f'steering_vectors_{method}.pt')
-        if not os.path.exists(vector_path):
-            raise FileNotFoundError(f"Steering vectors not found: {vector_path}")
+        # Look for existing steering vector file (try multiple patterns)
+        vector_dir = output_dirs['compute_wrmd']
+        vector_path = None
+        for pattern in [f'steering_vectors_{method}.pt', 'steering_vectors_*.pt']:
+            import glob
+            matches = glob.glob(os.path.join(str(vector_dir), pattern))
+            if matches:
+                vector_path = matches[0]
+                break
+        if vector_path is None or not os.path.exists(vector_path):
+            raise FileNotFoundError(f"No steering vector files found in: {vector_dir}")
         results['steering_vectors'] = vector_path
         print(f"\n[INFO] Using existing steering vectors: {vector_path}")
 
