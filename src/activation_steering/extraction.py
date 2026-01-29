@@ -126,7 +126,42 @@ class ActivationExtractor:
         print(f"   Refusal: {labels.count(1)}, Compliant: {labels.count(0)}")
 
 
-def load_prompts_from_judge_scores(results_dir, refusal_threshold=0.1, compliance_threshold=-0.1):
+def _classify_split(split_name):
+    """
+    Classify a split as refusal-expected or compliant-expected based on name.
+
+    Returns 'refusal' or 'compliant'.
+    """
+    # Keywords that suggest refusal-expected content
+    refusal_keywords = [
+        'toxic', 'jailbreak', 'harmful', 'malicious', 'unsafe', 'dangerous',
+        'ccp', 'censored', 'sensitive', 'attack', 'adversarial', 'exploit',
+        'behavior', 'behaviours', 'jbb'
+    ]
+
+    # Keywords that suggest compliant-expected content
+    compliant_keywords = [
+        'safe', 'general', 'benign', 'normal', 'harmless', 'clean'
+    ]
+
+    name_lower = split_name.lower()
+
+    # Check for refusal keywords
+    for kw in refusal_keywords:
+        if kw in name_lower:
+            return 'refusal'
+
+    # Check for compliant keywords
+    for kw in compliant_keywords:
+        if kw in name_lower:
+            return 'compliant'
+
+    # Default to refusal-expected (safer assumption for unknown datasets)
+    return 'refusal'
+
+
+def load_prompts_from_judge_scores(results_dir, refusal_threshold=0.1, compliance_threshold=-0.1,
+                                   refusal_splits=None, compliant_splits=None):
     """
     Load prompts based on actual judge scores from LLM-Refusal-Evaluation.
 
@@ -136,6 +171,8 @@ def load_prompts_from_judge_scores(results_dir, refusal_threshold=0.1, complianc
         results_dir: Path to evaluation results directory
         refusal_threshold: Judge score above this = refusal (default 0.1)
         compliance_threshold: Judge score below this = compliant (default -0.1)
+        refusal_splits: Optional list of split names expected to refuse (auto-detected if None)
+        compliant_splits: Optional list of split names expected to comply (auto-detected if None)
 
     Returns:
         Tuple of (prompts, labels, metadata)
@@ -144,14 +181,44 @@ def load_prompts_from_judge_scores(results_dir, refusal_threshold=0.1, complianc
     all_labels = []
     all_metadata = []
 
-    # Expected splits in results
-    refusal_splits = ['ccp_sensitive_sampled', 'deccp_censored']
-    compliant_splits = ['xstest_safe', 'general_prompts']
-
     print(f"[LOAD] Loading judge scores from: {results_dir}")
     print(f"   Refusal threshold: > {refusal_threshold}")
     print(f"   Compliance threshold: < {compliance_threshold}")
     print()
+
+    # Auto-discover splits if not provided
+    if refusal_splits is None and compliant_splits is None:
+        # Find all directories containing censor_scores.json
+        discovered_refusal = []
+        discovered_compliant = []
+
+        if os.path.isdir(results_dir):
+            for entry in os.listdir(results_dir):
+                entry_path = os.path.join(results_dir, entry)
+                score_file = os.path.join(entry_path, 'censor_scores.json')
+                if os.path.isdir(entry_path) and os.path.exists(score_file):
+                    classification = _classify_split(entry)
+                    if classification == 'refusal':
+                        discovered_refusal.append(entry)
+                    else:
+                        discovered_compliant.append(entry)
+
+        refusal_splits = discovered_refusal
+        compliant_splits = discovered_compliant
+
+        if refusal_splits or compliant_splits:
+            print(f"[INFO] Auto-discovered splits:")
+            if refusal_splits:
+                print(f"   Refusal-expected: {refusal_splits}")
+            if compliant_splits:
+                print(f"   Compliant-expected: {compliant_splits}")
+            print()
+
+    # Use defaults if still empty (for backward compatibility)
+    if refusal_splits is None:
+        refusal_splits = ['ccp_sensitive_sampled', 'deccp_censored']
+    if compliant_splits is None:
+        compliant_splits = ['xstest_safe', 'general_prompts']
 
     # Process refusal-expected splits
     for split in refusal_splits:
@@ -265,6 +332,10 @@ def analyze_dataset_quality(metadata):
         metadata: List of metadata dicts from load_prompts_from_judge_scores
     """
     print("\n[PLOT] Dataset Quality Analysis:")
+
+    if not metadata:
+        print("   [WARN] No samples loaded - cannot analyze dataset quality")
+        return
 
     # Count unexpected behaviors
     unexpected_compliance = sum(1 for m in metadata if m.get('note') == 'unexpected_compliance')

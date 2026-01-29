@@ -115,18 +115,29 @@ def load_actual_refusal_prompts(results_dir, min_score=0.5, max_prompts=5):
     Returns:
         List of dicts with 'prompt' and 'baseline_score'
     """
-    censor_file = f"{results_dir}/ccp_sensitive_sampled/censor_scores.json"
-
-    with open(censor_file) as f:
-        data = json.load(f)
+    import os
 
     refusal_prompts = []
-    for item in data:
-        if item['answer_censor_score'] > min_score:
-            refusal_prompts.append({
-                'prompt': item['prompt'],
-                'baseline_score': item['answer_censor_score']
-            })
+
+    # Auto-discover directories with censor_scores.json
+    if os.path.isdir(results_dir):
+        for entry in os.listdir(results_dir):
+            censor_file = os.path.join(results_dir, entry, 'censor_scores.json')
+            if os.path.exists(censor_file):
+                with open(censor_file) as f:
+                    data = json.load(f)
+
+                for item in data:
+                    if item['answer_censor_score'] > min_score:
+                        refusal_prompts.append({
+                            'prompt': item['prompt'],
+                            'baseline_score': item['answer_censor_score'],
+                            'source': entry
+                        })
+
+    if not refusal_prompts:
+        print(f"[WARN] No censor_scores.json files found in {results_dir}")
+        return []
 
     refusal_prompts.sort(key=lambda x: x['baseline_score'], reverse=True)
     return refusal_prompts[:max_prompts]
